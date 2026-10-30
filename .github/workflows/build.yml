@@ -187,11 +187,13 @@ jobs:
         run: |
           FA=$(curl -s https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/maven-metadata.xml | grep -oE '<version>[^<]*\+1\.21\.11</version>' | tail -1 | sed -E 's/<\/?version>//g')
           YARN=$(curl -s https://maven.fabricmc.net/net/fabricmc/yarn/maven-metadata.xml | grep -oE '<version>1\.21\.11\+build\.[^<]*</version>' | tail -1 | sed -E 's/<\/?version>//g')
-          LOADER=$(curl -s https://maven.fabricmc.net/net/fabricmc/fabric-loader/maven-metadata.xml | grep -oE '<version>[^<]*</version>' | tail -1 | sed -E 's/<\/?version>//g')
+          LOADER=$(curl -s https://maven.fabricmc.net/net/fabricmc/fabric-loader/maven-metadata.xml | grep -oE '<version>[^<]*</version>' | grep -v SNAPSHOT | tail -1 | sed -E 's/<\/?version>//g')
+          LOOM=$(curl -s https://maven.fabricmc.net/net/fabricmc/fabric-loom/maven-metadata.xml | grep -oE '<version>[^<]*</version>' | grep -v SNAPSHOT | tail -1 | sed -E 's/<\/?version>//g')
           echo "fabric-api=$FA"
           echo "yarn=$YARN"
           echo "loader=$LOADER"
-          if [ -z "$FA" ] || [ -z "$YARN" ] || [ -z "$LOADER" ]; then
+          echo "loom=$LOOM"
+          if [ -z "$FA" ] || [ -z "$YARN" ] || [ -z "$LOADER" ] || [ -z "$LOOM" ]; then
             echo "Nie udało się ustalić wersji"
             exit 1
           fi
@@ -200,7 +202,7 @@ jobs:
           minecraft_version=1.21.11
           yarn_mappings=$YARN
           loader_version=$LOADER
-          loom_version=1.11.8
+          loom_version=$LOOM
           fabric_version=$FA
           mod_version=1.0.0
           maven_group=com.nova.client
