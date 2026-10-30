@@ -1,4 +1,4 @@
-name: Build mod
+Name: Build mod
 
 on:
   push:
@@ -24,7 +24,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 9.8.0
+          gradle-version: '8.10'
 
       - name: Create mod project
         run: |
@@ -217,3 +217,4 @@ jobs:
         with:
           name: nova-spearswap
           path: build/libs/*.jar
+          
