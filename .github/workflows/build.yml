@@ -1,36 +1,42 @@
-name: Build mod
+name: build
 
-on:
-  push:
-  pull_request:
-  workflow_dispatch:
-
-permissions:
-  contents: write
+on: [push, workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.14
+          gradle-version: 9.2.0
 
       - name: Build
-        run: gradle build --no-daemon
+        run: |
+          ZIP=$(find . -maxdepth 1 -name "*.zip" | head -1)
+          if [ -z "$ZIP" ]; then
+            ZIP=$(find . -name "*.zip" | head -1)
+          fi
+          echo "Znaleziono archiwum: $ZIP"
+          mkdir -p proj
+          unzip -oq "$ZIP" -d proj
+          
+          PROJECT_DIR=$(dirname "$(find proj -name "build.gradle" | head -1)")
+          echo "Katalog projektu: $PROJECT_DIR"
+          
+          gradle -p "$PROJECT_DIR" build
 
-      - name: Upload jar
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: nova-spearswap
-          path: build/libs/*.jar
+          path: |
+            **/build/libs/*.jar
+            !**/build/libs/*-sources.jar
+
+            
