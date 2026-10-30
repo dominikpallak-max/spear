@@ -1,42 +1,205 @@
-name: build
+name: Build mod
 
-on: [push, workflow_dispatch]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 9.2.0
+          gradle-version: 8.14
+
+      - name: Create mod project
+        run: |
+          mkdir -p src/main/java/com/nova/client/spearswap
+          mkdir -p src/main/resources/assets/nova/lang
+
+          cat > settings.gradle << 'EOF'
+          pluginManagement {
+              repositories {
+                  maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          rootProject.name = 'nova-spearswap'
+          EOF
+
+          cat > gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx2G
+          minecraft_version=1.21.11
+          yarn_mappings=1.21.11+build.1
+          loader_version=0.18.1
+          loom_version=1.11-SNAPSHOT
+          fabric_version=0.135.0+1.21.11
+          mod_version=1.0.0
+          maven_group=com.nova.client
+          archives_base_name=nova-spearswap
+          EOF
+
+          cat > build.gradle << 'EOF'
+          plugins {
+              id 'fabric-loom' version "${loom_version}"
+              id 'maven-publish'
+          }
+
+          version = project.mod_version
+          group = project.maven_group
+
+          base {
+              archivesName = project.archives_base_name
+          }
+
+          repositories {}
+
+          dependencies {
+              minecraft "com.mojang:minecraft:${project.minecraft_version}"
+              mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+              modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+              modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+          }
+
+          processResources {
+              inputs.property "version", project.version
+              filesMatching("fabric.mod.json") {
+                  expand "version": project.version
+              }
+          }
+
+          tasks.withType(JavaCompile).configureEach {
+              it.options.release = 21
+          }
+
+          java {
+              withSourcesJar()
+          }
+          EOF
+
+          cat > src/main/resources/fabric.mod.json << 'EOF'
+          {
+            "schemaVersion": 1,
+            "id": "nova-spearswap",
+            "version": "${version}",
+            "name": "Nova Spear Swap",
+            "description": "Przypisany klawisz zamienia spear na slot 1 i od razu go używa.",
+            "authors": ["Nova"],
+            "license": "All-Rights-Reserved",
+            "environment": "client",
+            "entrypoints": {
+              "client": ["com.nova.client.spearswap.SpearSwap"]
+            },
+            "depends": {
+              "fabricloader": ">=0.18.1",
+              "minecraft": "1.21.11",
+              "java": ">=21",
+              "fabric-api": "*"
+            }
+          }
+          EOF
+
+          cat > src/main/java/com/nova/client/spearswap/SpearSwap.java << 'EOF'
+          package com.nova.client.spearswap;
+
+          import net.fabricmc.api.ClientModInitializer;
+          import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+          import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+          import net.minecraft.client.MinecraftClient;
+          import net.minecraft.client.option.KeyBinding;
+          import net.minecraft.client.util.InputUtil;
+          import net.minecraft.item.ItemStack;
+          import net.minecraft.registry.Registries;
+          import net.minecraft.screen.slot.SlotActionType;
+          import net.minecraft.util.Hand;
+          import net.minecraft.util.Identifier;
+          import org.lwjgl.glfw.GLFW;
+
+          public class SpearSwap implements ClientModInitializer {
+
+              private static final KeyBinding.Category CATEGORY =
+                      KeyBinding.Category.create(Identifier.of("nova", "main"));
+
+              private static final KeyBinding SPEAR_KEY = KeyBindingHelper.registerKeyBinding(
+                      new KeyBinding("key.nova.spearswap", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
+
+              @Override
+              public void onInitializeClient() {
+                  ClientTickEvents.END_CLIENT_TICK.register(client -> {
+                      while (SPEAR_KEY.wasPressed()) {
+                          swapAndUse(client);
+                      }
+                  });
+              }
+
+              private static void swapAndUse(MinecraftClient client) {
+                  if (client.player == null || client.interactionManager == null) return;
+
+                  var player = client.player;
+                  var inv = player.getInventory();
+
+                  int spearIndex = -1;
+                  for (int i = 0; i < 36; i++) {
+                      if (isSpear(inv.getStack(i))) {
+                          spearIndex = i;
+                          break;
+                      }
+                  }
+                  if (spearIndex == -1) return;
+
+                  if (spearIndex != 0) {
+                      ItemStack first = inv.getStack(0).copy();
+                      ItemStack spear = inv.getStack(spearIndex).copy();
+                      inv.setStack(0, spear);
+                      inv.setStack(spearIndex, first);
+
+                      int screenSlot = spearIndex < 9 ? spearIndex + 36 : spearIndex;
+                      client.interactionManager.clickSlot(
+                              player.playerScreenHandler.syncId,
+                              screenSlot,
+                              0,
+                              SlotActionType.SWAP,
+                              player);
+                  }
+
+                  inv.setSelectedSlot(0);
+                  client.interactionManager.interactItem(player, Hand.MAIN_HAND);
+              }
+
+              private static boolean isSpear(ItemStack stack) {
+                  if (stack.isEmpty()) return false;
+                  return Registries.ITEM.getId(stack.getItem()).getPath().contains("spear");
+              }
+          }
+          EOF
+
+          cat > src/main/resources/assets/nova/lang/en_us.json << 'EOF'
+          {
+            "key.nova.spearswap": "Spear Swap",
+            "key.category.nova.main": "Nova Client"
+          }
+          EOF
 
       - name: Build
-        run: |
-          ZIP=$(find . -maxdepth 1 -name "*.zip" | head -1)
-          if [ -z "$ZIP" ]; then
-            ZIP=$(find . -name "*.zip" | head -1)
-          fi
-          echo "Znaleziono archiwum: $ZIP"
-          mkdir -p proj
-          unzip -oq "$ZIP" -d proj
-          
-          PROJECT_DIR=$(dirname "$(find proj -name "build.gradle" | head -1)")
-          echo "Katalog projektu: $PROJECT_DIR"
-          
-          gradle -p "$PROJECT_DIR" build
+        run: gradle build --no-daemon
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
         with:
           name: nova-spearswap
-          path: |
-            **/build/libs/*.jar
-            !**/build/libs/*-sources.jar
-
-            
+          path: build/libs/*.jar
