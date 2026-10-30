@@ -42,18 +42,6 @@ jobs:
           rootProject.name = 'nova-spearswap'
           EOF
 
-          cat > gradle.properties << 'EOF'
-          org.gradle.jvmargs=-Xmx2G
-          minecraft_version=1.21.11
-          yarn_mappings=1.21.11+build.1
-          loader_version=0.18.1
-          loom_version=1.11-SNAPSHOT
-          fabric_version=0.135.0+1.21.11
-          mod_version=1.0.0
-          maven_group=com.nova.client
-          archives_base_name=nova-spearswap
-          EOF
-
           cat > build.gradle << 'EOF'
           plugins {
               id 'fabric-loom' version "${loom_version}"
@@ -193,6 +181,30 @@ jobs:
             "key.nova.spearswap": "Spear Swap",
             "key.category.nova.main": "Nova Client"
           }
+          EOF
+
+      - name: Resolve latest versions
+        run: |
+          FA=$(curl -s https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/maven-metadata.xml | grep -oE '<version>[^<]*\+1\.21\.11</version>' | tail -1 | sed -E 's/<\/?version>//g')
+          YARN=$(curl -s https://maven.fabricmc.net/net/fabricmc/yarn/maven-metadata.xml | grep -oE '<version>1\.21\.11\+build\.[^<]*</version>' | tail -1 | sed -E 's/<\/?version>//g')
+          LOADER=$(curl -s https://maven.fabricmc.net/net/fabricmc/fabric-loader/maven-metadata.xml | grep -oE '<version>[^<]*</version>' | tail -1 | sed -E 's/<\/?version>//g')
+          echo "fabric-api=$FA"
+          echo "yarn=$YARN"
+          echo "loader=$LOADER"
+          if [ -z "$FA" ] || [ -z "$YARN" ] || [ -z "$LOADER" ]; then
+            echo "Nie udało się ustalić wersji"
+            exit 1
+          fi
+          cat > gradle.properties << EOF
+          org.gradle.jvmargs=-Xmx2G
+          minecraft_version=1.21.11
+          yarn_mappings=$YARN
+          loader_version=$LOADER
+          loom_version=1.11.8
+          fabric_version=$FA
+          mod_version=1.0.0
+          maven_group=com.nova.client
+          archives_base_name=nova-spearswap
           EOF
 
       - name: Build
